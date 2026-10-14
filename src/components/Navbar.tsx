@@ -1,11 +1,25 @@
 'use client';
-
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Terminal, Code2, ListFilter, History, Shield, Cpu, User, BookOpen } from 'lucide-react';
+import { Terminal, Code2, ListFilter, History, Shield, Cpu, User, BookOpen, Edit3 } from 'lucide-react';
+import UsernameModal from '@/components/UsernameModal';
+import { getStoredUsername, subscribeToUsername } from '@/lib/user';
 
 export default function Navbar() {
   const pathname = usePathname();
+  const [username, setUsername] = useState<string>('');
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setUsername(getStoredUsername());
+    const unsubscribe = subscribeToUsername((newVal) => {
+      setUsername(newVal);
+    });
+    return unsubscribe;
+  }, []);
 
   const navItems = [
     { label: 'Bài tập', href: '/problems', icon: ListFilter },
@@ -80,10 +94,30 @@ export default function Navbar() {
         </div>
 
         {/* Status / Quick Action */}
-        <div className="flex items-center space-x-3">
-          <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#0e1420] border border-slate-800 text-[11px] text-slate-400 font-mono shadow-inner">
+        <div className="flex items-center space-x-2.5">
+          {/* Candidate Username Badge / Trigger */}
+          {mounted && (
+            <button
+              type="button"
+              onClick={() => setIsUserModalOpen(true)}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                username
+                  ? 'bg-blue-950/40 border-blue-500/30 text-blue-300 hover:bg-blue-900/50 hover:border-blue-400'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+              }`}
+              title="Bấm để đặt hoặc đổi tên thí sinh"
+            >
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="max-w-[130px] truncate font-semibold">
+                {username ? username : 'Đặt tên thí sinh'}
+              </span>
+              <Edit3 className="w-3 h-3 text-slate-400" />
+            </button>
+          )}
+
+          <div className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#0e1420] border border-slate-800 text-[11px] text-slate-400 font-mono shadow-inner">
             <Cpu className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span>Piston API Engine</span>
+            <span>Piston Engine</span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
           </div>
 
@@ -92,10 +126,16 @@ export default function Navbar() {
             className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold transition-all shadow-md shadow-blue-600/25 active:scale-95 border border-blue-400/20"
           >
             <Code2 className="w-3.5 h-3.5" />
-            <span>Luyện tập ngay</span>
+            <span>Luyện tập</span>
           </Link>
         </div>
       </div>
+
+      <UsernameModal
+        isOpen={isUserModalOpen}
+        onClose={() => setIsUserModalOpen(false)}
+        title={username ? 'Thay Đổi Tên Thí Sinh' : 'Nhập Tên Thí Sinh'}
+      />
     </header>
   );
 }

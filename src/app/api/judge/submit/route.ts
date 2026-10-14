@@ -6,7 +6,15 @@ import { Verdict, SingleTestResult } from '@/types';
 
 export async function POST(req: Request) {
   try {
-    const { problemId, languageId, sourceCode } = await req.json();
+    const { problemId, languageId, sourceCode, username } = await req.json();
+
+    const cleanedUsername = (username || '').trim();
+    if (!cleanedUsername) {
+      return NextResponse.json(
+        { error: 'Vui lòng nhập tên thí sinh (username) trước khi nộp bài chấm!' },
+        { status: 400 }
+      );
+    }
 
     if (!problemId || !languageId || !sourceCode) {
       return NextResponse.json({ error: 'Thiếu thông tin bài tập, ngôn ngữ hoặc mã nguồn!' }, { status: 400 });
@@ -36,6 +44,7 @@ export async function POST(req: Request) {
     const submission = await prisma.submission.create({
       data: {
         problemId: problem.id,
+        username: cleanedUsername,
         languageId: Number(languageId),
         language: languageName,
         code: sourceCode,

@@ -55,6 +55,7 @@ export interface SingleTestResult {
 export interface SubmissionDTO {
   id: string;
   problemId: string;
+  username?: string | null;
   problem?: {
     id: string;
     slug: string;

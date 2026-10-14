@@ -42,6 +42,7 @@ model Submission {
   id            String   @id @default(cuid())
   problemId     String
   problem       Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  username      String   @default("Ẩn danh")
   languageId    Int
   language      String
   code          String

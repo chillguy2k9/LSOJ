@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import confetti from 'canvas-confetti';
@@ -29,9 +29,15 @@ import {
   Maximize2,
   Minimize2,
   ChevronRight,
+  User,
+  Edit3,
+  ArrowDownToLine,
+  Filter,
 } from 'lucide-react';
 
 import CodeEditor from '@/components/CodeEditor';
+import UsernameModal from '@/components/UsernameModal';
+import { getStoredUsername, subscribeToUsername } from '@/lib/user';
 
 export default function ProblemDetailPage() {
   const params = useParams();
@@ -46,6 +52,12 @@ export default function ProblemDetailPage() {
   const [leftTab, setLeftTab] = useState<'description' | 'submissions'>('description');
   const [problemSubmissions, setProblemSubmissions] = useState<SubmissionDTO[]>([]);
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionsFilter, setSubmissionsFilter] = useState<'mine' | 'all'>('mine');
+
+  // Candidate / User state
+  const [username, setUsername] = useState<string>('');
+  const [isUsernameModalOpen, setIsUsernameModalOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Editor states
   const [selectedLang, setSelectedLang] = useState(SUPPORTED_LANGUAGES[0]);
@@ -64,17 +76,41 @@ export default function ProblemDetailPage() {
   const [runResult, setRunResult] = useState<any>(null);
   const [submissionResult, setSubmissionResult] = useState<SubmissionDTO | null>(null);
 
+  // Chuẩn hóa danh sách testcase cho console kết quả chấm
+  const consoleTestResults = useMemo<SingleTestResult[]>(() => {
+    if (!submissionResult || !submissionResult.testResults) return [];
+    if (Array.isArray(submissionResult.testResults)) return submissionResult.testResults;
+    if (typeof submissionResult.testResults === 'string') {
+      try {
+        return JSON.parse(submissionResult.testResults);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [submissionResult]);
+
+  // Load username & subscribe to changes
+  useEffect(() => {
+    setMounted(true);
+    setUsername(getStoredUsername());
+    const unsub = subscribeToUsername((name) => {
+      setUsername(name);
+    });
+    return unsub;
+  }, []);
+
   // Load problem details
   useEffect(() => {
     fetchProblem();
   }, [slug]);
 
-  // Load submissions when switching to submissions tab or when problem loads
+  // Load submissions when switching to submissions tab or filter changes
   useEffect(() => {
     if (problem) {
       fetchProblemSubmissions();
     }
-  }, [problem?.id, leftTab]);
+  }, [problem?.id, leftTab, submissionsFilter, username]);
 
   const fetchProblem = async (includeAll = false) => {
     try {
@@ -101,11 +137,16 @@ export default function ProblemDetailPage() {
     }
   };
 
-  const fetchProblemSubmissions = async () => {
+  const fetchProblemSubmissions = async (filterMode = submissionsFilter) => {
     if (!problem) return;
     try {
       setLoadingSubmissions(true);
-      const res = await fetch(`/api/submissions?problemId=${problem.id}&limit=20`);
+      const curUser = getStoredUsername();
+      let url = `/api/submissions?problemId=${problem.id}&limit=30`;
+      if (filterMode === 'mine' && curUser) {
+        url += `&exactUsername=${encodeURIComponent(curUser)}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setProblemSubmissions(data);
@@ -189,6 +230,14 @@ export default function ProblemDetailPage() {
   // Submit full evaluation
   const handleSubmit = async () => {
     if (!problem || running || submitting) return;
+
+    // Yêu cầu bắt buộc: Chưa nhập tên thí sinh thì chưa thể chấm!
+    const currentUsername = getStoredUsername();
+    if (!currentUsername) {
+      setIsUsernameModalOpen(true);
+      return;
+    }
+
     try {
       setSubmitting(true);
       setConsoleTab('result');
@@ -202,6 +251,7 @@ export default function ProblemDetailPage() {
           problemId: problem.id,
           languageId: selectedLang.id,
           sourceCode: code,
+          username: currentUsername,
         }),
       });
 
@@ -211,12 +261,10 @@ export default function ProblemDetailPage() {
       }
 
       setSubmissionResult(data.submission);
-      if (Array.isArray(data.submission.testResults)) {
-        const firstFailIdx = data.submission.testResults.findIndex((r: any) => r.verdict !== 'AC');
-        setActiveTestIdx(firstFailIdx !== -1 ? firstFailIdx : 0);
-      } else {
-        setActiveTestIdx(0);
-      }
+      const rawTests = data.submission.testResults;
+      const testList = Array.isArray(rawTests) ? rawTests : [];
+      const firstFailIdx = testList.findIndex((r: any) => r.verdict !== 'AC');
+      setActiveTestIdx(firstFailIdx !== -1 ? firstFailIdx : 0);
 
       if (data.submission.verdict === 'AC') {
         confetti({
@@ -489,11 +537,35 @@ export default function ProblemDetailPage() {
             ) : (
               /* Submissions Tab */
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-semibold text-white">Lịch sử nộp bài của bạn</h3>
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                  <div className="flex items-center space-x-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSubmissionsFilter('mine')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        submissionsFilter === 'mine'
+                          ? 'bg-blue-600/30 text-cyan-300 border border-blue-500/40'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Bài của tôi
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubmissionsFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        submissionsFilter === 'all'
+                          ? 'bg-blue-600/30 text-cyan-300 border border-blue-500/40'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Tất cả ({problemSubmissions.length})
+                    </button>
+                  </div>
+
                   <button
-                    onClick={fetchProblemSubmissions}
-                    className="text-[11px] text-blue-400 hover:underline"
+                    onClick={() => fetchProblemSubmissions(submissionsFilter)}
+                    className="text-[11px] text-cyan-400 hover:underline"
                   >
                     Làm mới
                   </button>
@@ -501,17 +573,26 @@ export default function ProblemDetailPage() {
 
                 {loadingSubmissions ? (
                   <div className="py-8 text-center text-slate-500 text-xs">
-                    Đang nạp lịch sử...
+                    Đang nạp danh sách nộp bài...
                   </div>
                 ) : problemSubmissions.length === 0 ? (
-                  <div className="py-8 text-center text-slate-500 text-xs">
-                    Bạn chưa có lượt nộp nào cho bài này. Hãy bấm "Submit" để thử sức!
+                  <div className="py-8 text-center text-slate-500 text-xs space-y-1">
+                    <div>
+                      {submissionsFilter === 'mine'
+                        ? username
+                          ? `Chưa có bài nộp nào của thí sinh "${username}".`
+                          : 'Bạn chưa nhập tên thí sinh. Hãy bấm nút Thí sinh ở trên để đặt tên!'
+                        : 'Chưa có bài nộp nào cho bài tập này.'}
+                    </div>
+                    <p className="text-[11px] text-slate-600">Bấm "Submit" ở khung bên phải để nộp bài!</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {problemSubmissions.map((sub) => {
                       const vCfg = VERDICT_CONFIG[sub.verdict as Verdict] || VERDICT_CONFIG.WA;
                       const isCurrent = submissionResult?.id === sub.id;
+                      const isMine = username && sub.username && sub.username.toLowerCase() === username.toLowerCase();
+
                       return (
                         <div
                           key={sub.id}
@@ -520,13 +601,13 @@ export default function ProblemDetailPage() {
                             setConsoleTab('result');
                             setActiveTestIdx(0);
                           }}
-                          className={`bg-[#121824] hover:bg-[#161f2e] border transition-all rounded-lg p-3 text-xs flex items-center justify-between cursor-pointer group ${
+                          className={`bg-[#121824] hover:bg-[#161f2e] border transition-all rounded-xl p-3 text-xs flex flex-col gap-2 cursor-pointer group ${
                             isCurrent
                               ? 'border-cyan-500 bg-cyan-950/20 shadow-md shadow-cyan-500/10'
                               : 'border-slate-800 hover:border-slate-700'
                           }`}
                         >
-                          <div className="space-y-0.5">
+                          <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${vCfg.badge}`}
@@ -537,19 +618,57 @@ export default function ProblemDetailPage() {
                                 {sub.passedTests}/{sub.totalTests} tests
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400">
-                              {sub.language} • {new Date(sub.createdAt).toLocaleTimeString()}
+
+                            <div className="text-right text-[11px] font-mono text-slate-400 flex items-center space-x-2">
+                              <span>{sub.time ? `${(sub.time * 1000).toFixed(0)} ms` : '-'}</span>
+                              <span>•</span>
+                              <span>{sub.memory ? `${(sub.memory / 1024).toFixed(1)} MB` : '-'}</span>
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2">
-                            <div className="text-right text-[11px] font-mono text-slate-400 space-y-0.5">
-                              <div>{sub.time ? `${(sub.time * 1000).toFixed(0)} ms` : '-'}</div>
-                              <div>{sub.memory ? `${(sub.memory / 1024).toFixed(1)} MB` : '-'}</div>
+                          <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[11px] text-slate-400">
+                            <div className="flex items-center space-x-1.5 truncate max-w-[200px]">
+                              <User className="w-3 h-3 text-cyan-400 shrink-0" />
+                              <span className={`font-mono font-medium truncate ${isMine ? 'text-cyan-300' : 'text-slate-300'}`}>
+                                {sub.username || 'Ẩn danh'}
+                              </span>
+                              {isMine && (
+                                <span className="text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 px-1 rounded">
+                                  Bạn
+                                </span>
+                              )}
                             </div>
-                            <span className="text-[10px] text-cyan-400 font-mono opacity-0 group-hover:opacity-100 transition-opacity bg-cyan-500/10 border border-cyan-500/20 px-2 py-1 rounded">
-                              Xem test →
-                            </span>
+
+                            <div className="flex items-center space-x-2">
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {mounted
+                                  ? new Date(sub.createdAt).toLocaleTimeString('vi-VN', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                    })
+                                  : ''}
+                              </span>
+
+                              {/* Restore code to editor */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm('Khôi phục mã nguồn bài nộp này vào khung Code Editor?')) {
+                                    setCode(sub.code);
+                                    const matched = SUPPORTED_LANGUAGES.find((l) => l.id === sub.languageId);
+                                    if (matched) setSelectedLang(matched);
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-cyan-300 border border-slate-700 flex items-center space-x-1 transition-all"
+                                title="Nạp code này vào editor"
+                              >
+                                <ArrowDownToLine className="w-3 h-3 text-cyan-400" />
+                                <span>Nạp code</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -568,20 +687,40 @@ export default function ProblemDetailPage() {
         >
           {/* Editor Header Bar */}
           <div className="h-10 border-b border-slate-800 bg-[#0e131d] px-3 flex items-center justify-between shrink-0">
-            {/* Language Selector */}
-            <div className="flex items-center space-x-2">
-              <span className="text-[11px] text-slate-400">Ngôn ngữ:</span>
-              <select
-                value={selectedLang.id}
-                onChange={(e) => handleLanguageChange(Number(e.target.value))}
-                className="bg-[#1a2130] border border-slate-700 text-white text-xs rounded px-2.5 py-1 focus:outline-none focus:border-blue-500 font-mono"
+            {/* Language Selector & Candidate Name */}
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] text-slate-400">Ngôn ngữ:</span>
+                <select
+                  value={selectedLang.id}
+                  onChange={(e) => handleLanguageChange(Number(e.target.value))}
+                  className="bg-[#1a2130] border border-slate-700 text-white text-xs rounded px-2.5 py-1 focus:outline-none focus:border-blue-500 font-mono"
+                >
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <option key={lang.id} value={lang.id}>
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Candidate Username indicator */}
+              <button
+                type="button"
+                onClick={() => setIsUsernameModalOpen(true)}
+                className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs transition-all border ${
+                  username
+                    ? 'bg-slate-900 border-slate-700 text-slate-300 hover:border-cyan-500/50 hover:text-cyan-300'
+                    : 'bg-amber-500/10 border-amber-500/40 text-amber-300 hover:bg-amber-500/20 animate-pulse'
+                }`}
+                title="Bấm để nhập hoặc đổi tên thí sinh"
               >
-                {SUPPORTED_LANGUAGES.map((lang) => (
-                  <option key={lang.id} value={lang.id}>
-                    {lang.name}
-                  </option>
-                ))}
-              </select>
+                <User className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-mono text-[11px] font-semibold max-w-[120px] truncate">
+                  {username ? username : 'Nhập tên thí sinh *'}
+                </span>
+                <Edit3 className="w-3 h-3 text-slate-500" />
+              </button>
             </div>
 
             {/* Editor Action buttons */}
@@ -891,12 +1030,12 @@ export default function ProblemDetailPage() {
                       )}
 
                       {/* Interactive Testcases Breakdown & Hidden Test Inspector */}
-                      {submissionResult.testResults && submissionResult.testResults.length > 0 && (
+                      {consoleTestResults.length > 0 && (
                         <div className="space-y-3 pt-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-bold text-white">
-                                Toàn bộ {submissionResult.testResults.length} Testcases đã chấm:
+                                Toàn bộ {consoleTestResults.length} Testcases đã chấm:
                               </span>
                               <span className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono font-medium">
                                 🔓 Đã mở khóa Test Ẩn
@@ -909,7 +1048,7 @@ export default function ProblemDetailPage() {
 
                           {/* Test Selector Tabs / Buttons */}
                           <div className="flex flex-wrap gap-1.5 pb-1 max-h-36 overflow-y-auto">
-                            {submissionResult.testResults.map((tr, idx) => {
+                            {consoleTestResults.map((tr, idx) => {
                               const isTestAC = tr.verdict === 'AC';
                               const isSelected = activeTestIdx === idx;
                               return (
@@ -950,8 +1089,8 @@ export default function ProblemDetailPage() {
                           {/* Selected Test Detail Viewer */}
                           {(() => {
                             const curTest =
-                              submissionResult.testResults[activeTestIdx] ||
-                              submissionResult.testResults[0];
+                              consoleTestResults[activeTestIdx] ||
+                              consoleTestResults[0];
                             if (!curTest) return null;
                             const isCurAC = curTest.verdict === 'AC';
                             const vCfg =
@@ -1106,6 +1245,16 @@ export default function ProblemDetailPage() {
           </div>
         </div>
       </div>
+
+      <UsernameModal
+        isOpen={isUsernameModalOpen}
+        onClose={() => setIsUsernameModalOpen(false)}
+        onSaved={(newUsername) => {
+          setUsername(newUsername);
+        }}
+        title={username ? 'Thay Đổi Tên Thí Sinh' : 'Nhập Tên Thí Sinh Để Chấm Bài'}
+        description="Bạn cần nhập tên thí sinh để hệ thống ghi nhận kết quả và chấm bài thi."
+      />
     </div>
   );
 }
