@@ -2,9 +2,19 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { executeSingleTest, executeWithPiston, executeBatchTestsWithPiston } from '@/lib/piston';
 import { Verdict } from '@/types';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkRateLimit(`run:${clientIp}`, 2, 2000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: `Thao tác quá nhanh! Vui lòng đợi ${rateCheck.retryAfterSeconds}s trước khi chạy tiếp.` },
+        { status: 429 }
+      );
+    }
+
     const { problemId, languageId, sourceCode, customInput } = await req.json();
 
     if (!problemId || !languageId || !sourceCode) {

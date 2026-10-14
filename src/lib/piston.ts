@@ -21,6 +21,18 @@ export interface PistonExecuteResponse {
   message?: string;
 }
 
+
+export function getPistonHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const key = process.env.PISTON_API_KEY || 'nam_lsoj_sec_999f8a2b71c4';
+  if (key) {
+    headers['X-Piston-Key'] = key;
+  }
+  return headers;
+}
+
 /**
  * Chuẩn hóa output theo tiêu chuẩn Competitive Programming:
  * - Chuẩn hóa line endings (\r\n -> \n)
@@ -94,9 +106,7 @@ export async function executeWithPiston(params: {
   try {
     const response = await fetch(pistonApiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getPistonHeaders(),
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
@@ -384,7 +394,7 @@ while True:
 
   const response = await fetch(pistonApiUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getPistonHeaders(),
     body: JSON.stringify(payload),
     cache: 'no-store',
   });

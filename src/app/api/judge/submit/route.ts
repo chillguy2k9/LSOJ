@@ -3,9 +3,19 @@ import { prisma } from '@/lib/prisma';
 import { executeSingleTest, executeBatchTestsWithPiston } from '@/lib/piston';
 import { SUPPORTED_LANGUAGES } from '@/lib/constants';
 import { Verdict, SingleTestResult } from '@/types';
+import { checkRateLimit, getClientIp } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = getClientIp(req);
+    const rateCheck = checkRateLimit(`submit:${clientIp}`, 2, 2500);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: `Thao tác nộp bài quá nhanh! Vui lòng đợi ${rateCheck.retryAfterSeconds}s trước khi nộp tiếp.` },
+        { status: 429 }
+      );
+    }
+
     const { problemId, languageId, sourceCode, username } = await req.json();
 
     const cleanedUsername = (username || '').trim();
