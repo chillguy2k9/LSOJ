@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { executeSingleTest, executeWithPiston, compareOutput } from '@/lib/piston';
+import { executeSingleTest, executeWithPiston, executeBatchTestsWithPiston } from '@/lib/piston';
 import { Verdict } from '@/types';
 
 export async function POST(req: Request) {
@@ -71,28 +71,90 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Bài tập này chưa có Sample Test nào!' }, { status: 400 });
     }
 
-    const sampleResults = [];
-    for (let i = 0; i < problem.testcases.length; i++) {
-      const tc = problem.testcases[i];
-      const res = await executeSingleTest({
+    const isBatchSupported = Number(languageId) === 54 || Number(languageId) === 71;
+    let sampleResults: any[] = [];
+    let usedBatch = false;
+
+    if (isBatchSupported) {
+      try {
+        const batchRes = await executeBatchTestsWithPiston({
+          sourceCode,
+          languageId: Number(languageId),
+          testcases: problem.testcases.map((tc, idx) => ({
+            testIndex: idx + 1,
+            input: tc.input,
+            expectedOutput: tc.output,
+            isSample: true,
+            explanation: tc.explanation,
+          })),
+          timeLimitMs: problem.timeLimit,
+          memoryLimitKb: problem.memoryLimit,
+        });
+
+        if (batchRes.isCompileError) {
+          sampleResults = [
+            {
+              testIndex: 1,
+              isSample: true,
+              verdict: 'CE',
+              time: 0,
+              memory: 0,
+              error: batchRes.compileErrorMsg || 'Compile error',
+              input: problem.testcases[0].input,
+              expectedOutput: problem.testcases[0].output,
+            },
+          ];
+        } else {
+          sampleResults = batchRes.testResults;
+        }
+        usedBatch = true;
+      } catch (err) {
+        console.warn('Run sample batch failed, falling back to parallel:', err);
+        usedBatch = false;
+      }
+    }
+
+    if (!usedBatch) {
+      const firstTc = problem.testcases[0];
+      const firstRes = await executeSingleTest({
         sourceCode,
         languageId: Number(languageId),
-        testIndex: i + 1,
-        input: tc.input,
-        expectedOutput: tc.output,
+        testIndex: 1,
+        input: firstTc.input,
+        expectedOutput: firstTc.output,
         isSample: true,
         timeLimitMs: problem.timeLimit,
         memoryLimitKb: problem.memoryLimit,
       });
 
-      sampleResults.push({
-        ...res,
-        explanation: tc.explanation,
-      });
+      sampleResults = [
+        {
+          ...firstRes,
+          explanation: firstTc.explanation,
+        },
+      ];
 
-      // Nếu lỗi biên dịch (CE), dừng ngay không cần test tiếp
-      if (res.verdict === 'CE') {
-        break;
+      // Nếu test 1 không bị CE và còn các sample test khác, chạy song song cùng lúc
+      if (firstRes.verdict !== 'CE' && problem.testcases.length > 1) {
+        const remainingTestcases = problem.testcases.slice(1);
+        const remainingResults = await Promise.all(
+          remainingTestcases.map((tc, idx) =>
+            executeSingleTest({
+              sourceCode,
+              languageId: Number(languageId),
+              testIndex: idx + 2,
+              input: tc.input,
+              expectedOutput: tc.output,
+              isSample: true,
+              timeLimitMs: problem.timeLimit,
+              memoryLimitKb: problem.memoryLimit,
+            }).then((res) => ({
+              ...res,
+              explanation: tc.explanation,
+            }))
+          )
+        );
+        sampleResults.push(...remainingResults);
       }
     }
 

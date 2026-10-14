@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: Request, { params }: { params: { slug: string } }) {
   try {
     const { searchParams } = new URL(req.url);
@@ -34,7 +37,11 @@ export async function GET(req: Request, { params }: { params: { slug: string } }
       return NextResponse.json({ error: 'Không tìm thấy bài tập!' }, { status: 404 });
     }
 
-    return NextResponse.json(problem);
+    return NextResponse.json(problem, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

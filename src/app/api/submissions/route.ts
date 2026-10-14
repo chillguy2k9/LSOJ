@@ -41,32 +41,13 @@ export async function GET(req: Request) {
       },
     });
 
-    // Nạp kèm testcases để bổ sung thông tin test ẩn nếu cần
-    const problemIds = Array.from(new Set(submissions.map((s) => s.problemId)));
-    const allProblemTestcases = await prisma.testcase.findMany({
-      where: { problemId: { in: problemIds } },
-      orderBy: { order: 'asc' },
-    });
-
     const parsedSubmissions = submissions.map((sub) => {
       let testResults = null;
       if (sub.testResults) {
         try {
           testResults = JSON.parse(sub.testResults);
-          if (Array.isArray(testResults)) {
-            const problemTCs = allProblemTestcases.filter((tc) => tc.problemId === sub.problemId);
-            testResults = testResults.map((tr: any, idx: number) => {
-              const tc = problemTCs[idx];
-              return {
-                ...tr,
-                input: tr.input || tc?.input || '',
-                expectedOutput: tr.expectedOutput || tc?.output || '',
-                explanation: tr.explanation || tc?.explanation || undefined,
-              };
-            });
-          }
         } catch {
-          // ignore
+          testResults = null;
         }
       }
       return {

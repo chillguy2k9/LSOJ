@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { executeSingleTest } from '@/lib/piston';
+import { executeSingleTest, executeBatchTestsWithPiston } from '@/lib/piston';
 import { SUPPORTED_LANGUAGES } from '@/lib/constants';
 import { Verdict, SingleTestResult } from '@/types';
 
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const testResults: SingleTestResult[] = [];
+    let testResults: SingleTestResult[] = [];
     let passedCount = 0;
     let maxTime = 0;
     let maxMemory = 0;
@@ -63,61 +63,155 @@ export async function POST(req: Request) {
     let compileErrorMsg: string | null = null;
     let runtimeErrorMsg: string | null = null;
 
-    // Chấm từng test case
-    for (let i = 0; i < problem.testcases.length; i++) {
-      const tc = problem.testcases[i];
+    // Chế độ 1: Single-Compile Batch Runner (Chỉ biên dịch 1 lần duy nhất cho toàn bộ bài thi)
+    const isBatchSupported = Number(languageId) === 54 || Number(languageId) === 71;
+    let usedBatch = false;
 
-      const res = await executeSingleTest({
+    if (isBatchSupported) {
+      try {
+        const batchRes = await executeBatchTestsWithPiston({
+          sourceCode,
+          languageId: Number(languageId),
+          testcases: problem.testcases.map((tc, idx) => ({
+            testIndex: idx + 1,
+            input: tc.input,
+            expectedOutput: tc.output,
+            isSample: tc.isSample,
+            explanation: tc.explanation,
+          })),
+          timeLimitMs: problem.timeLimit,
+          memoryLimitKb: problem.memoryLimit,
+        });
+
+        if (batchRes.isCompileError) {
+          finalVerdict = 'CE';
+          compileErrorMsg = batchRes.compileErrorMsg || 'Compile error';
+          testResults = [];
+        } else {
+          testResults = batchRes.testResults;
+          for (const res of testResults) {
+            if (res.time && res.time > maxTime) maxTime = res.time;
+            if (res.memory && res.memory > maxMemory) maxMemory = res.memory;
+
+            if (res.verdict === 'AC') {
+              passedCount++;
+            } else {
+              if (finalVerdict === 'AC') {
+                finalVerdict = res.verdict;
+              }
+              if (res.verdict === 'RTE' && !runtimeErrorMsg) {
+                runtimeErrorMsg = res.error || 'Runtime error';
+              }
+            }
+          }
+
+          if (passedCount !== problem.testcases.length && finalVerdict === 'AC') {
+            finalVerdict = 'WA';
+          }
+        }
+        usedBatch = true;
+      } catch (batchErr) {
+        console.warn('Batch single-compile failed, falling back to parallel runner:', batchErr);
+        usedBatch = false;
+      }
+    }
+
+    // Chế độ 2: Dự phòng Smart Parallel Runner
+    if (!usedBatch) {
+      const firstTc = problem.testcases[0];
+      const firstRes = await executeSingleTest({
         sourceCode,
         languageId: Number(languageId),
-        testIndex: i + 1,
-        input: tc.input,
-        expectedOutput: tc.output,
-        isSample: tc.isSample,
+        testIndex: 1,
+        input: firstTc.input,
+        expectedOutput: firstTc.output,
+        isSample: firstTc.isSample,
         timeLimitMs: problem.timeLimit,
         memoryLimitKb: problem.memoryLimit,
       });
 
-      if (res.time && res.time > maxTime) maxTime = res.time;
-      if (res.memory && res.memory > maxMemory) maxMemory = res.memory;
+      testResults.push({
+        testIndex: 1,
+        isSample: firstTc.isSample,
+        verdict: firstRes.verdict,
+        time: firstRes.time,
+        memory: firstRes.memory,
+        input: firstTc.input,
+        stdout: firstRes.stdout,
+        expectedOutput: firstTc.output,
+        explanation: firstTc.explanation || undefined,
+        error: firstRes.error,
+      });
 
-      // Lưu đầy đủ thông tin testcase (kể cả Hidden Tests) để người dùng có thể xem lại sau khi nộp
-      const testResultItem: SingleTestResult = {
-        testIndex: i + 1,
-        isSample: tc.isSample,
-        verdict: res.verdict,
-        time: res.time,
-        memory: res.memory,
-        input: tc.input,
-        stdout: res.stdout,
-        expectedOutput: tc.output,
-        explanation: tc.explanation || undefined,
-        error: res.error,
-      };
-
-      testResults.push(testResultItem);
-
-      if (res.verdict === 'AC') {
-        passedCount++;
+      if (firstRes.verdict === 'CE') {
+        compileErrorMsg = firstRes.error || 'Compile error';
+        finalVerdict = 'CE';
       } else {
-        // Ghi nhận lỗi đầu tiên
-        if (finalVerdict === 'AC') {
-          finalVerdict = res.verdict;
+        const remainingTestcases = problem.testcases.slice(1);
+        if (remainingTestcases.length > 0) {
+          const CONCURRENCY_LIMIT = 4;
+          const remainingResults: SingleTestResult[] = new Array(remainingTestcases.length);
+          let currentIndex = 0;
+
+          const workers = Array.from(
+            { length: Math.min(CONCURRENCY_LIMIT, remainingTestcases.length) },
+            async () => {
+              while (currentIndex < remainingTestcases.length) {
+                const idx = currentIndex++;
+                const tc = remainingTestcases[idx];
+                const testNum = idx + 2;
+
+                const res = await executeSingleTest({
+                  sourceCode,
+                  languageId: Number(languageId),
+                  testIndex: testNum,
+                  input: tc.input,
+                  expectedOutput: tc.output,
+                  isSample: tc.isSample,
+                  timeLimitMs: problem.timeLimit,
+                  memoryLimitKb: problem.memoryLimit,
+                });
+
+                remainingResults[idx] = {
+                  testIndex: testNum,
+                  isSample: tc.isSample,
+                  verdict: res.verdict,
+                  time: res.time,
+                  memory: res.memory,
+                  input: tc.input,
+                  stdout: res.stdout,
+                  expectedOutput: tc.output,
+                  explanation: tc.explanation || undefined,
+                  error: res.error,
+                };
+              }
+            }
+          );
+
+          await Promise.all(workers);
+          testResults.push(...remainingResults);
         }
 
-        if (res.verdict === 'CE') {
-          compileErrorMsg = res.error || 'Compile error';
-          // Dừng ngay lập tức nếu lỗi biên dịch
-          break;
-        } else if (res.verdict === 'RTE' && !runtimeErrorMsg) {
-          runtimeErrorMsg = res.error || 'Runtime error';
+        for (const res of testResults) {
+          if (res.time && res.time > maxTime) maxTime = res.time;
+          if (res.memory && res.memory > maxMemory) maxMemory = res.memory;
+
+          if (res.verdict === 'AC') {
+            passedCount++;
+          } else {
+            if (finalVerdict === 'AC') {
+              finalVerdict = res.verdict;
+            }
+            if (res.verdict === 'RTE' && !runtimeErrorMsg) {
+              runtimeErrorMsg = res.error || 'Runtime error';
+            }
+          }
+        }
+
+        if (passedCount !== problem.testcases.length && finalVerdict === 'AC') {
+          finalVerdict = 'WA';
         }
       }
-    }
-
-    // Nếu không vượt qua hết và finalVerdict chưa đổi (trường hợp hiếm)
-    if (passedCount !== problem.testcases.length && finalVerdict === 'AC') {
-      finalVerdict = 'WA';
     }
 
     // Cập nhật kết quả vào database

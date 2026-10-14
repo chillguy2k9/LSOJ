@@ -33,6 +33,9 @@ import {
   Edit3,
   ArrowDownToLine,
   Filter,
+  UploadCloud,
+  X,
+  FileUp,
 } from 'lucide-react';
 
 import CodeEditor from '@/components/CodeEditor';
@@ -67,6 +70,11 @@ export default function ProblemDetailPage() {
   const [activeTestIdx, setActiveTestIdx] = useState<number>(0);
   const [showingAllTests, setShowingAllTests] = useState<boolean>(false);
   const [loadingAllTests, setLoadingAllTests] = useState<boolean>(false);
+
+  // File Upload states
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
 
   // Bottom console states
   const [consoleTab, setConsoleTab] = useState<'sample' | 'custom' | 'result'>('sample');
@@ -107,7 +115,7 @@ export default function ProblemDetailPage() {
 
   // Load submissions when switching to submissions tab or filter changes
   useEffect(() => {
-    if (problem) {
+    if (problem && leftTab === 'submissions') {
       fetchProblemSubmissions();
     }
   }, [problem?.id, leftTab, submissionsFilter, username]);
@@ -120,7 +128,9 @@ export default function ProblemDetailPage() {
         setLoading(true);
       }
       setError(null);
-      const res = await fetch(`/api/problems/${slug}${includeAll ? '?includeAll=true' : ''}`);
+      const res = await fetch(`/api/problems/${slug}${includeAll ? '?includeAll=true' : ''}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) {
         throw new Error('Không tìm thấy bài tập!');
       }
@@ -169,7 +179,46 @@ export default function ProblemDetailPage() {
   const handleResetCode = () => {
     if (confirm('Bạn có chắc muốn đặt lại mã nguồn về mẫu ban đầu?')) {
       setCode(selectedLang.defaultCode);
+      setUploadedFileName(null);
     }
+  };
+
+  const processUploadedFile = (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Kích thước file mã nguồn vượt quá giới hạn cho phép (tối đa 2MB)!');
+      return;
+    }
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+
+    // Tự động nhận diện ngôn ngữ lập trình dựa vào phần mở rộng file
+    if (ext === 'cpp' || ext === 'cc' || ext === 'cxx' || ext === 'c') {
+      const found = SUPPORTED_LANGUAGES.find((l) => l.monacoLang === 'cpp' || l.id === 54);
+      if (found) setSelectedLang(found);
+    } else if (ext === 'py' || ext === 'py3') {
+      const found = SUPPORTED_LANGUAGES.find((l) => l.monacoLang === 'python' || l.id === 71);
+      if (found) setSelectedLang(found);
+    } else if (ext === 'java') {
+      const found = SUPPORTED_LANGUAGES.find((l) => l.monacoLang === 'java' || l.id === 62);
+      if (found) setSelectedLang(found);
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text !== undefined) {
+        setCode(text);
+        setUploadedFileName(`${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processUploadedFile(file);
+    e.target.value = '';
   };
 
   const copyToClipboard = (text: string, index: number) => {
@@ -526,7 +575,7 @@ export default function ProblemDetailPage() {
                         {tc.explanation && (
                           <div className="p-2.5 bg-[#0e141f] border-t border-slate-800/60 text-[11px] text-slate-400">
                             <span className="font-semibold text-slate-300">Giải thích: </span>
-                            {tc.explanation}
+                            <MarkdownRenderer content={tc.explanation} className="inline-block" />
                           </div>
                         )}
                       </div>
@@ -725,6 +774,42 @@ export default function ProblemDetailPage() {
 
             {/* Editor Action buttons */}
             <div className="flex items-center space-x-2">
+              {/* File upload badge indicator */}
+              {uploadedFileName && (
+                <div className="flex items-center space-x-1 px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs animate-in fade-in">
+                  <FileCode className="w-3.5 h-3.5 shrink-0" />
+                  <span className="font-mono text-[11px] max-w-[140px] truncate" title={uploadedFileName}>
+                    {uploadedFileName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadedFileName(null)}
+                    className="p-0.5 hover:text-white text-emerald-300 transition-colors"
+                    title="Bỏ nhãn file"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Upload File Input & Button */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".cpp,.c,.cc,.cxx,.py,.py3,.java,.pas,.txt"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-500/50 transition-all font-medium"
+                title="Tải tệp mã nguồn từ máy tính (.cpp, .py, .java)"
+              >
+                <UploadCloud className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Nạp file</span>
+              </button>
+
               <button
                 onClick={handleResetCode}
                 className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors"
@@ -735,8 +820,30 @@ export default function ProblemDetailPage() {
             </div>
           </div>
 
-          {/* Monaco Editor Container */}
-          <div className="flex-1 min-h-[300px] relative w-full overflow-hidden bg-[#1e1e1e]">
+          {/* Monaco Editor Container with Drag & Drop */}
+          <div
+            className={`flex-1 min-h-[300px] relative w-full overflow-hidden bg-[#1e1e1e] transition-all ${
+              isDraggingFile ? 'ring-2 ring-cyan-400/80 ring-inset' : ''
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingFile(true);
+            }}
+            onDragLeave={() => setIsDraggingFile(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingFile(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) processUploadedFile(file);
+            }}
+          >
+            {isDraggingFile && (
+              <div className="absolute inset-0 z-20 bg-slate-950/85 backdrop-blur-sm border-2 border-dashed border-cyan-400 flex flex-col items-center justify-center pointer-events-none animate-in fade-in duration-150">
+                <FileUp className="w-10 h-10 text-cyan-400 animate-bounce mb-2" />
+                <p className="text-white font-semibold text-sm">Thả file mã nguồn vào đây để nạp code</p>
+                <p className="text-slate-400 text-xs mt-1 font-mono">Tự động nhận diện .cpp, .py, .java (tối đa 2MB)</p>
+              </div>
+            )}
             <CodeEditor
               language={selectedLang.monacoLang}
               value={code}
@@ -784,6 +891,16 @@ export default function ProblemDetailPage() {
 
               {/* Action Buttons: Run & Submit */}
               <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 text-xs font-semibold border border-slate-700/80 hover:border-cyan-500/40 flex items-center space-x-1.5 transition-all active:scale-95 shadow-sm"
+                  title="Tải tệp mã nguồn từ máy tính (.cpp, .py, .java)"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Nạp file</span>
+                </button>
+
                 <button
                   onClick={handleRun}
                   disabled={running || submitting}
@@ -1229,7 +1346,7 @@ export default function ProblemDetailPage() {
                                 {curTest.explanation && (
                                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-slate-300 text-xs">
                                     <span className="font-semibold text-blue-400">Giải thích: </span>
-                                    {curTest.explanation}
+                                    <MarkdownRenderer content={curTest.explanation} className="inline-block" />
                                   </div>
                                 )}
                               </div>

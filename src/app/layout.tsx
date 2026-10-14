@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import 'katex/dist/katex.min.css';
 import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -16,6 +17,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi" className="dark">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="min-h-screen bg-[#080a0f] text-slate-100 antialiased flex flex-col selection:bg-blue-600 selection:text-white bg-cyber-grid">
         <Navbar />
         <main className="flex-1 flex flex-col">{children}</main>
