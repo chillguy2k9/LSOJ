@@ -26,7 +26,7 @@ export function getPistonHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  const key = process.env.PISTON_API_KEY || 'vinh_lsoj_sec_999f8a2b71c4';
+  const key = process.env.PISTON_API_KEY;
   if (key) {
     headers['X-Piston-Key'] = key;
   }
@@ -77,7 +77,7 @@ export async function executeWithPiston(params: {
   timeTaken: number;
 }> {
   const pistonApiUrl =
-    process.env.PISTON_API_URL || 'http://13.238.254.56:2000/api/v2/execute';
+    process.env.PISTON_API_URL || 'https://emkc.org/api/v2/piston/execute';
 
   const langConfig = SUPPORTED_LANGUAGES.find((l) => l.id === Number(params.languageId)) || {
     id: params.languageId,
@@ -312,7 +312,7 @@ export async function executeBatchTestsWithPiston(params: {
   timeLimitMs: number;
   memoryLimitKb: number;
 }): Promise<BatchExecutionResult> {
-  const pistonApiUrl = process.env.PISTON_API_URL || 'http://13.238.254.56:2000/api/v2/execute';
+  const pistonApiUrl = process.env.PISTON_API_URL || 'https://emkc.org/api/v2/piston/execute';
   const langId = Number(params.languageId);
 
   const isCpp = langId === 54;
