@@ -40,29 +40,76 @@ export default function MouseTrackerBackground() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let width = (canvas.width = container.clientWidth || window.innerWidth);
-    let height = (canvas.height = container.clientHeight || 600);
+    // Cache dimensions & rect to completely eliminate getBoundingClientRect layout thrashing
+    let rect = container.getBoundingClientRect();
+    const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2);
 
-    const handleResize = () => {
+    let width = 0;
+    let height = 0;
+
+    const updateSize = () => {
       if (!container || !canvas) return;
-      width = canvas.width = container.clientWidth;
-      height = canvas.height = container.clientHeight;
-    };
-    window.addEventListener('resize', handleResize);
+      rect = container.getBoundingClientRect();
+      width = container.clientWidth || window.innerWidth;
+      height = container.clientHeight || 600;
 
-    // Smooth coordinates relative to container
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    updateSize();
+
+    const handleResizeOrScroll = () => {
+      updateSize();
+    };
+
+    window.addEventListener('resize', handleResizeOrScroll, { passive: true });
+    window.addEventListener('scroll', handleResizeOrScroll, { passive: true });
+
+    // Smooth coordinates for the ambient fluid glow
     let targetX = width / 2;
     let targetY = height / 3;
     let currentX = targetX;
     let currentY = targetY;
-    let lastX = targetX;
-    let lastY = targetY;
     let isVisible = false;
+
+    // Throttle trackers
+    let lastBubbleX = -999;
+    let lastBubbleY = -999;
+    let lastBubbleTime = 0;
+    let lastRippleX = -999;
+    let lastRippleY = -999;
 
     const bubbles: Bubble[] = [];
     const ripples: WaterRipple[] = [];
 
-    const onMove = (relX: number, relY: number) => {
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+
+      // Check boundary using cached rect
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      ) {
+        if (isVisible) {
+          isVisible = false;
+          if (fluidGlow) fluidGlow.style.opacity = '0';
+        }
+        return;
+      }
+
+      const relX = clientX - rect.left;
+      const relY = clientY - rect.top;
+
       if (!isVisible) {
         isVisible = true;
         if (fluidGlow) fluidGlow.style.opacity = '1';
@@ -71,121 +118,104 @@ export default function MouseTrackerBackground() {
       targetX = relX;
       targetY = relY;
 
-      // Distance moved since last ripple
-      const dx = relX - lastX;
-      const dy = relY - lastY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const now = performance.now();
 
-      // Gợn sóng loang nước khi di chuyển chuột (Water Ripples)
-      if (dist > 16) {
-        lastX = relX;
-        lastY = relY;
+      // 1. Gợn sóng loang nước (Ripples) - Throttled by distance
+      const dRippleX = relX - lastRippleX;
+      const dRippleY = relY - lastRippleY;
+      const distRipple = Math.hypot(dRippleX, dRippleY);
 
-        if (ripples.length < 15) {
-          ripples.push({
-            x: relX,
-            y: relY,
-            radius: 8,
-            maxRadius: Math.min(150, 50 + dist * 1.4),
-            opacity: 0.55,
-            expansionSpeed: 2.2 + Math.random() * 0.8,
-            hue: 185 + Math.random() * 30, // Cyan-aqua
-          });
-        }
+      if (distRipple > 28 && ripples.length < 8) {
+        lastRippleX = relX;
+        lastRippleY = relY;
+
+        ripples.push({
+          x: relX,
+          y: relY,
+          radius: 6,
+          maxRadius: Math.min(130, 40 + distRipple * 1.2),
+          opacity: 0.5,
+          expansionSpeed: 2.2 + Math.random() * 0.8,
+          hue: 185 + Math.random() * 30, // Cyan to Aqua
+        });
       }
 
-      // Tạo bọt khí bơi theo sau con trỏ chuột (Aquatic Bubbles)
-      const bubbleCount = Math.random() < 0.7 ? 2 : 1;
-      for (let i = 0; i < bubbleCount; i++) {
-        if (bubbles.length < 45) {
-          bubbles.push({
-            x: relX + (Math.random() - 0.5) * 16,
-            y: relY + (Math.random() - 0.5) * 16,
-            radius: Math.random() * 3.6 + 1.8,
-            vx: (Math.random() - 0.5) * 1.2,
-            vy: -(Math.random() * 1.4 + 0.6), // Nổi lên trên như bọt nước
-            wobbleSpeed: Math.random() * 0.08 + 0.05,
-            wobbleAmp: Math.random() * 1.5 + 0.6,
-            wobblePhase: Math.random() * Math.PI * 2,
-            life: 0,
-            maxLife: Math.random() * 35 + 30,
-            hue: 182 + Math.random() * 35,
-          });
-        }
-      }
-    };
+      // 2. Bọt khí nước (Bubbles) - Throttled by distance & time to prevent lag
+      const dBubbleX = relX - lastBubbleX;
+      const dBubbleY = relY - lastBubbleY;
+      const distBubble = Math.hypot(dBubbleX, dBubbleY);
 
-    const onLeave = () => {
-      isVisible = false;
-      if (fluidGlow) fluidGlow.style.opacity = '0';
-    };
+      if ((distBubble > 18 || now - lastBubbleTime > 60) && bubbles.length < 22) {
+        lastBubbleX = relX;
+        lastBubbleY = relY;
+        lastBubbleTime = now;
 
-    const handlePointerMove = (e: PointerEvent | MouseEvent) => {
-      if ('pointerType' in e && e.pointerType === 'touch') return;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-
-      // Chỉ kích hoạt khi chuột nằm trong phạm vi đầu trang chủ (Hero section)
-      if (
-        e.clientX >= rect.left &&
-        e.clientX <= rect.right &&
-        e.clientY >= rect.top &&
-        e.clientY <= rect.bottom
-      ) {
-        const relX = e.clientX - rect.left;
-        const relY = e.clientY - rect.top;
-        onMove(relX, relY);
-      } else {
-        onLeave();
+        bubbles.push({
+          x: relX + (Math.random() - 0.5) * 12,
+          y: relY + (Math.random() - 0.5) * 12,
+          radius: Math.random() * 3 + 2,
+          vx: (Math.random() - 0.5) * 0.9,
+          vy: -(Math.random() * 1.5 + 0.8), // Float smoothly upwards
+          wobbleSpeed: Math.random() * 0.08 + 0.04,
+          wobbleAmp: Math.random() * 1.2 + 0.5,
+          wobblePhase: Math.random() * Math.PI * 2,
+          life: 0,
+          maxLife: Math.random() * 30 + 35,
+          hue: 184 + Math.random() * 32,
+        });
       }
     };
 
     const handlePointerLeave = () => {
-      onLeave();
+      isVisible = false;
+      if (fluidGlow) fluidGlow.style.opacity = '0';
     };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
-    window.addEventListener('mousemove', handlePointerMove, { passive: true });
-    document.addEventListener('pointerleave', handlePointerLeave);
-    document.addEventListener('mouseleave', handlePointerLeave);
+    document.addEventListener('pointerleave', handlePointerLeave, { passive: true });
 
-    // Animation Loop
+    // High performance animation loop
     let rafId: number;
     const render = () => {
-      // Lerp smooth follow cho vùng loang nước
-      currentX += (targetX - currentX) * 0.16;
-      currentY += (targetY - currentY) * 0.16;
+      // Smooth lerp follow for fluid glow
+      currentX += (targetX - currentX) * 0.12;
+      currentY += (targetY - currentY) * 0.12;
 
-      // Cập nhật vị trí vùng sáng loang nước hữu cơ
-      if (fluidGlow) {
-        fluidGlow.style.transform = `translate3d(${currentX - 250}px, ${currentY - 250}px, 0)`;
+      if (fluidGlow && isVisible) {
+        fluidGlow.style.transform = `translate3d(${Math.round(currentX - 220)}px, ${Math.round(currentY - 220)}px, 0)`;
       }
 
       ctx.clearRect(0, 0, width, height);
 
-      // 1. VẼ GỢN SÓNG LOANG NƯỚC (Expanding soft ripples)
+      // 1. RENDER WATER RIPPLES (Dual ring gradient wave without shadowBlur)
       for (let i = ripples.length - 1; i >= 0; i--) {
         const r = ripples[i];
         r.radius += r.expansionSpeed;
-        r.opacity *= 0.94; // Mờ dần khi loang rộng ra
+        r.opacity *= 0.93;
 
-        if (r.opacity <= 0.02 || r.radius >= r.maxRadius) {
+        if (r.opacity <= 0.015 || r.radius >= r.maxRadius) {
           ripples.splice(i, 1);
           continue;
         }
 
-        ctx.save();
+        const strokeAlpha = r.opacity * 0.6;
         ctx.beginPath();
         ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `hsla(${r.hue}, 90%, 65%, ${r.opacity * 0.5})`;
-        ctx.lineWidth = Math.max(1, 3.5 * (1 - r.radius / r.maxRadius));
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = `hsla(${r.hue}, 100%, 60%, ${r.opacity * 0.8})`;
+        ctx.strokeStyle = `hsla(${r.hue}, 95%, 65%, ${strokeAlpha})`;
+        ctx.lineWidth = Math.max(1, 2.5 * (1 - r.radius / r.maxRadius));
         ctx.stroke();
-        ctx.restore();
+
+        // Inner soft echo ring
+        if (r.radius > 16) {
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, r.radius * 0.65, 0, Math.PI * 2);
+          ctx.strokeStyle = `hsla(${r.hue}, 90%, 60%, ${strokeAlpha * 0.35})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       }
 
-      // 2. VẼ BỌT NƯỚC THEO SAU (Translucent aquatic bubbles with glint)
+      // 2. RENDER AQUATIC BUBBLES (Crystal glass look with specular highlight, 0ms render cost)
       for (let i = bubbles.length - 1; i >= 0; i--) {
         const b = bubbles[i];
         b.life++;
@@ -201,28 +231,27 @@ export default function MouseTrackerBackground() {
           continue;
         }
 
-        ctx.save();
+        // Bubble Outer Rim & Subtle Fill
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
-        ctx.strokeStyle = `hsla(${b.hue}, 95%, 75%, ${opacity * 0.85})`;
-        ctx.lineWidth = 1.2;
-        ctx.fillStyle = `hsla(${b.hue}, 90%, 60%, ${opacity * 0.18})`;
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = `hsla(${b.hue}, 100%, 65%, ${opacity * 0.9})`;
+        ctx.fillStyle = `hsla(${b.hue}, 90%, 65%, ${opacity * 0.16})`;
         ctx.fill();
+        ctx.strokeStyle = `hsla(${b.hue}, 95%, 78%, ${opacity * 0.8})`;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
 
+        // Bubble Specular Reflection Glint
+        const glintRadius = Math.max(0.7, b.radius * 0.32);
         ctx.beginPath();
         ctx.arc(
-          b.x - b.radius * 0.35,
-          b.y - b.radius * 0.35,
-          Math.max(0.6, b.radius * 0.3),
+          b.x - b.radius * 0.36,
+          b.y - b.radius * 0.36,
+          glintRadius,
           0,
           Math.PI * 2
         );
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.9})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity * 0.92})`;
         ctx.fill();
-        ctx.restore();
       }
 
       rafId = requestAnimationFrame(render);
@@ -231,11 +260,10 @@ export default function MouseTrackerBackground() {
     rafId = requestAnimationFrame(render);
 
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', handleResizeOrScroll);
+      window.removeEventListener('scroll', handleResizeOrScroll);
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('mousemove', handlePointerMove);
       document.removeEventListener('pointerleave', handlePointerLeave);
-      document.removeEventListener('mouseleave', handlePointerLeave);
       cancelAnimationFrame(rafId);
     };
   }, []);
@@ -246,47 +274,45 @@ export default function MouseTrackerBackground() {
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 z-20 overflow-hidden select-none"
     >
-      {/* VÙNG ÁNH SÁNG LOANG NƯỚC HỮU CƠ (Organic fluid water morphing) */}
+      {/* VÙNG ÁNH SÁNG LOANG NƯỚC HỮU CƠ (Tối ưu hóa GPU không dùng CSS blur nặng) */}
       <div
         ref={fluidGlowRef}
-        className="absolute top-0 left-0 w-[500px] h-[500px] will-change-transform mix-blend-screen opacity-0 transition-opacity duration-300"
+        className="absolute top-0 left-0 w-[440px] h-[440px] will-change-transform mix-blend-screen opacity-0 transition-opacity duration-300"
       >
-        {/* Lớp loang nước chính (Morphing wave layer 1) */}
+        {/* Lớp loang nước chính */}
         <div
-          className="absolute inset-0 animate-water-morph-1"
+          className="absolute inset-0 animate-water-morph-1 rounded-full"
           style={{
             background: `
               radial-gradient(
-                ellipse at 45% 45%,
-                rgba(34, 211, 238, 0.42) 0%,
-                rgba(56, 189, 248, 0.26) 35%,
-                rgba(99, 102, 241, 0.14) 55%,
-                transparent 72%
+                circle at 45% 45%,
+                rgba(34, 211, 238, 0.32) 0%,
+                rgba(56, 189, 248, 0.18) 35%,
+                rgba(99, 102, 241, 0.08) 55%,
+                transparent 70%
               )
             `,
-            filter: 'blur(45px)',
           }}
         />
 
-        {/* Lớp loang nước thứ hai xoay ngược chiều (Morphing wave layer 2) */}
+        {/* Lớp loang nước thứ hai xoay ngược chiều */}
         <div
-          className="absolute inset-4 animate-water-morph-2"
+          className="absolute inset-4 animate-water-morph-2 rounded-full"
           style={{
             background: `
               radial-gradient(
-                ellipse at 55% 55%,
-                rgba(6, 182, 212, 0.36) 0%,
-                rgba(14, 165, 233, 0.22) 40%,
-                rgba(168, 85, 247, 0.1) 60%,
-                transparent 75%
+                circle at 55% 55%,
+                rgba(6, 182, 212, 0.26) 0%,
+                rgba(14, 165, 233, 0.14) 40%,
+                rgba(168, 85, 247, 0.06) 60%,
+                transparent 72%
               )
             `,
-            filter: 'blur(50px)',
           }}
         />
       </div>
 
-      {/* CANVAS VẼ GỢN SÓNG LOANG VÀ BỌT NƯỚC (Ripples & Floating Bubbles) */}
+      {/* CANVAS VẼ GỢN SÓNG VÀ BỌT NƯỚC SIÊU TỐC */}
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full pointer-events-none mix-blend-screen"
@@ -294,3 +320,4 @@ export default function MouseTrackerBackground() {
     </div>
   );
 }
+
