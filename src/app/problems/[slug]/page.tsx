@@ -78,6 +78,7 @@ export default function ProblemDetailPage() {
 
   // Bottom console states
   const [consoleTab, setConsoleTab] = useState<'sample' | 'custom' | 'result'>('sample');
+  const [consoleExpanded, setConsoleExpanded] = useState<boolean>(false);
   const [customInput, setCustomInput] = useState('');
   const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -887,6 +888,26 @@ export default function ProblemDetailPage() {
                   <Terminal className="w-3 h-3" />
                   <span>Kết quả Chấm</span>
                 </button>
+
+                {/* Nút phóng to / thu nhỏ bảng console để xem trọn vẹn testcase */}
+                <button
+                  type="button"
+                  onClick={() => setConsoleExpanded(!consoleExpanded)}
+                  className="px-2 py-1 rounded text-xs text-slate-400 hover:text-cyan-300 hover:bg-slate-800/80 transition-colors flex items-center space-x-1 border border-transparent hover:border-slate-700 ml-1.5"
+                  title={consoleExpanded ? 'Thu nhỏ bảng kết quả' : 'Phóng to bảng kết quả (không cần scroll)'}
+                >
+                  {consoleExpanded ? (
+                    <>
+                      <Minimize2 className="w-3 h-3 text-cyan-400" />
+                      <span className="hidden sm:inline text-[11px] font-mono">Thu nhỏ</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3 h-3 text-slate-400" />
+                      <span className="hidden sm:inline text-[11px] font-mono">Toàn màn</span>
+                    </>
+                  )}
+                </button>
               </div>
 
               {/* Action Buttons: Run & Submit */}
@@ -930,7 +951,15 @@ export default function ProblemDetailPage() {
             </div>
 
             {/* Console Content Area */}
-            <div className="h-44 overflow-y-auto p-3 text-xs font-mono bg-[#090c12]">
+            <div
+              className={`${
+                consoleExpanded
+                  ? 'h-[520px] max-h-[75vh]'
+                  : consoleTab === 'result'
+                  ? 'h-[370px]'
+                  : 'h-48'
+              } overflow-y-auto p-3 text-xs font-mono bg-[#090c12] transition-all duration-200`}
+            >
               {/* Tab 1: Sample Tests Preview */}
               {consoleTab === 'sample' && (
                 <div className="space-y-3">
@@ -1091,7 +1120,7 @@ export default function ProblemDetailPage() {
 
                   {/* Submit Result */}
                   {!submitting && submissionResult && (
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
                       {/* Overall Verdict Banner */}
                       {(() => {
                         const vCfg =
@@ -1100,37 +1129,33 @@ export default function ProblemDetailPage() {
 
                         return (
                           <div
-                            className={`p-3 rounded-lg border flex items-center justify-between ${
+                            className={`p-2.5 rounded-lg border flex items-center justify-between ${
                               isAC
                                 ? 'bg-emerald-500/15 border-emerald-500/40'
                                 : 'bg-rose-500/15 border-rose-500/40'
                             }`}
                           >
-                            <div className="flex items-center space-x-3">
+                            <div className="flex items-center space-x-2.5">
                               {isAC ? (
-                                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                               ) : (
-                                <XCircle className="w-6 h-6 text-rose-400" />
+                                <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
                               )}
-                              <div>
-                                <div className="text-base font-extrabold flex items-center space-x-2">
-                                  <span className={isAC ? 'text-emerald-400' : 'text-rose-400'}>
-                                    {vCfg.label} ({submissionResult.verdict})
-                                  </span>
-                                </div>
-                                <div className="text-[11px] text-slate-300">
-                                  {vCfg.desc}
-                                </div>
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-sm font-extrabold ${isAC ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {vCfg.label} ({submissionResult.verdict})
+                                </span>
+                                <span className="text-[11px] text-slate-400 hidden sm:inline">• {vCfg.desc}</span>
                               </div>
                             </div>
 
-                            <div className="text-right text-xs font-mono space-y-0.5">
-                              <div className="font-bold text-white">
+                            <div className="flex items-center space-x-2.5 text-xs font-mono">
+                              <span className="font-bold text-white bg-slate-900/80 px-2 py-0.5 rounded border border-slate-700/80">
                                 {submissionResult.passedTests} / {submissionResult.totalTests} tests đúng
-                              </div>
-                              <div className="text-[11px] text-slate-400">
-                                Thời gian: {submissionResult.time ? `${(submissionResult.time * 1000).toFixed(0)}ms` : '-'}
-                              </div>
+                              </span>
+                              <span className="text-slate-400 hidden sm:inline">
+                                {submissionResult.time ? `${(submissionResult.time * 1000).toFixed(0)}ms` : '-'}
+                              </span>
                             </div>
                           </div>
                         );
@@ -1148,23 +1173,23 @@ export default function ProblemDetailPage() {
 
                       {/* Interactive Testcases Breakdown & Hidden Test Inspector */}
                       {consoleTestResults.length > 0 && (
-                        <div className="space-y-3 pt-2">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
+                        <div className="space-y-2 pt-1">
+                          <div className="flex items-center justify-between gap-1 pb-0.5">
                             <div className="flex items-center space-x-2">
                               <span className="text-xs font-bold text-white">
-                                Toàn bộ {consoleTestResults.length} Testcases đã chấm:
+                                Toàn bộ {consoleTestResults.length} Testcases:
                               </span>
-                              <span className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 rounded-full font-mono font-medium">
+                              <span className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.2 rounded-full font-mono font-medium">
                                 🔓 Đã mở khóa Test Ẩn
                               </span>
                             </div>
                             <span className="text-[11px] text-slate-400">
-                              Bấm từng testcase để soi Input & Output
+                              Chọn testcase để soi chi tiết:
                             </span>
                           </div>
 
-                          {/* Test Selector Tabs / Buttons */}
-                          <div className="flex flex-wrap gap-1.5 pb-1 max-h-36 overflow-y-auto">
+                          {/* Test Selector Tabs: ngang mượt mà, không lồng scrollbar dọc */}
+                          <div className="flex items-center gap-1.5 pb-1 overflow-x-auto no-scrollbar">
                             {consoleTestResults.map((tr, idx) => {
                               const isTestAC = tr.verdict === 'AC';
                               const isSelected = activeTestIdx === idx;
@@ -1173,7 +1198,7 @@ export default function ProblemDetailPage() {
                                   key={idx}
                                   type="button"
                                   onClick={() => setActiveTestIdx(idx)}
-                                  className={`px-2.5 py-1.5 rounded-lg border text-left font-mono text-xs transition-all flex items-center space-x-1.5 cursor-pointer ${
+                                  className={`px-2.5 py-1 rounded-lg border text-left font-mono text-xs transition-all flex items-center space-x-1.5 cursor-pointer shrink-0 ${
                                     isSelected
                                       ? 'border-cyan-400 bg-cyan-500/20 shadow-md shadow-cyan-500/20 ring-1 ring-cyan-400'
                                       : isTestAC
@@ -1214,24 +1239,24 @@ export default function ProblemDetailPage() {
                               VERDICT_CONFIG[curTest.verdict as Verdict] || VERDICT_CONFIG.WA;
 
                             return (
-                              <div className="bg-[#101522] border border-slate-800 rounded-xl p-3.5 space-y-3">
+                              <div className="bg-[#101522] border border-slate-800 rounded-xl p-3 space-y-2.5">
                                 {/* Header of current test */}
-                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
-                                  <div className="flex items-center space-x-2.5">
-                                    <span className="text-sm font-bold text-white">
-                                      Chi tiết Testcase #{curTest.testIndex}
+                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-xs font-bold text-white">
+                                      Test #{curTest.testIndex}
                                     </span>
                                     <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center space-x-1 ${
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-semibold flex items-center space-x-1 ${
                                         curTest.isSample
                                           ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                                           : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                                       }`}
                                     >
-                                      {curTest.isSample ? 'Test Mẫu (Sample)' : '🔓 Test Ẩn (Hidden Test)'}
+                                      {curTest.isSample ? 'Test Mẫu' : '🔓 Test Ẩn'}
                                     </span>
                                     <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${vCfg.badge}`}
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${vCfg.badge}`}
                                     >
                                       {curTest.verdict}
                                     </span>
@@ -1255,11 +1280,11 @@ export default function ProblemDetailPage() {
                                   </div>
                                 </div>
 
-                                {/* Test Data Inspection Grid */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                  {/* Input */}
+                                {/* Test Data Inspection Grid: 3 cột song song trên desktop không cần scroll */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                                  {/* Cột 1: Input */}
                                   <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
-                                    <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center justify-between mb-1">
                                       <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
                                         Dữ liệu vào (Input):
                                       </span>
@@ -1269,21 +1294,21 @@ export default function ProblemDetailPage() {
                                         className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono"
                                       >
                                         <Copy className="w-3 h-3" />
-                                        <span>Chép Input</span>
+                                        <span>Chép</span>
                                       </button>
                                     </div>
-                                    <pre className="font-mono text-xs text-slate-200 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                                    <pre className="font-mono text-xs text-slate-200 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
                                       {curTest.input !== undefined && curTest.input !== ''
                                         ? curTest.input
-                                        : '(Testcase không có input)'}
+                                        : '(Không có input)'}
                                     </pre>
                                   </div>
 
-                                  {/* Expected Output */}
+                                  {/* Cột 2: Expected Output */}
                                   <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
-                                    <div className="flex items-center justify-between mb-1.5">
+                                    <div className="flex items-center justify-between mb-1">
                                       <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold">
-                                        Đáp án chuẩn (Expected Output):
+                                        Đáp án chuẩn (Expected):
                                       </span>
                                       <button
                                         type="button"
@@ -1293,47 +1318,53 @@ export default function ProblemDetailPage() {
                                         className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-mono"
                                       >
                                         <Copy className="w-3 h-3" />
-                                        <span>Chép Expected</span>
+                                        <span>Chép</span>
                                       </button>
                                     </div>
-                                    <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                                    <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
                                       {curTest.expectedOutput !== undefined &&
                                       curTest.expectedOutput !== ''
                                         ? curTest.expectedOutput
-                                        : '(Không có expected output)'}
+                                        : '(Không có expected)'}
+                                    </pre>
+                                  </div>
+
+                                  {/* Cột 3: Your Output / Stdout */}
+                                  <div
+                                    className={`bg-[#0b0e14] border rounded-lg p-2.5 flex flex-col ${
+                                      isCurAC
+                                        ? 'border-slate-800/80'
+                                        : 'border-rose-500/40 bg-rose-500/5'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
+                                        Code của bạn (Your Output):
+                                      </span>
+                                      <span
+                                        className={`text-[10px] font-mono font-bold ${
+                                          isCurAC ? 'text-emerald-400' : 'text-rose-400'
+                                        }`}
+                                      >
+                                        {isCurAC ? 'Khớp đáp án ✓' : 'Sai khác ✗'}
+                                      </span>
+                                    </div>
+                                    <pre
+                                      className={`font-mono text-xs whitespace-pre-wrap break-all max-h-36 overflow-y-auto ${
+                                        isCurAC ? 'text-emerald-300' : 'text-rose-300'
+                                      }`}
+                                    >
+                                      {curTest.stdout !== undefined && curTest.stdout !== ''
+                                        ? curTest.stdout
+                                        : '(Không có stdout output)'}
                                     </pre>
                                   </div>
                                 </div>
 
-                                {/* Actual User Output */}
-                                <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5">
-                                  <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
-                                      Kết quả của chương trình (Your Output / Stdout):
-                                    </span>
-                                    <span
-                                      className={`text-[10px] font-mono font-bold ${
-                                        isCurAC ? 'text-emerald-400' : 'text-rose-400'
-                                      }`}
-                                    >
-                                      {isCurAC ? 'Khớp đáp án ✓' : 'Khác đáp án chuẩn ✗'}
-                                    </span>
-                                  </div>
-                                  <pre
-                                    className={`font-mono text-xs whitespace-pre-wrap break-all max-h-48 overflow-y-auto ${
-                                      isCurAC ? 'text-emerald-300' : 'text-rose-300'
-                                    }`}
-                                  >
-                                    {curTest.stdout !== undefined && curTest.stdout !== ''
-                                      ? curTest.stdout
-                                      : '(Không có stdout output)'}
-                                  </pre>
-                                </div>
-
                                 {/* Error / Stderr if any */}
                                 {curTest.error && (
-                                  <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2.5 text-rose-300 text-xs">
-                                    <span className="font-bold block mb-1 font-mono text-rose-400 text-[11px]">
+                                  <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-2 text-rose-300 text-xs">
+                                    <span className="font-bold block mb-0.5 font-mono text-rose-400 text-[10px]">
                                       Lỗi runtime / Stderr:
                                     </span>
                                     <pre className="whitespace-pre-wrap font-mono text-[11px]">
@@ -1344,7 +1375,7 @@ export default function ProblemDetailPage() {
 
                                 {/* Explanation if any */}
                                 {curTest.explanation && (
-                                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-slate-300 text-xs">
+                                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-slate-300 text-xs">
                                     <span className="font-semibold text-blue-400">Giải thích: </span>
                                     <MarkdownRenderer content={curTest.explanation} className="inline-block" />
                                   </div>
