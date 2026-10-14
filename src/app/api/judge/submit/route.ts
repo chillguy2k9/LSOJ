@@ -245,11 +245,45 @@ export async function POST(req: Request) {
       },
     });
 
+    // Kiểm tra xem thí sinh đã từng hoặc vừa đạt AC bài tập này chưa
+    const isCurrentAC = finalVerdict === 'AC';
+    let hasPriorAC = false;
+    if (!isCurrentAC && username) {
+      const priorAC = await prisma.submission.findFirst({
+        where: {
+          problemId: problem.id,
+          username: username,
+          verdict: 'AC',
+        },
+        select: { id: true },
+      });
+      hasPriorAC = Boolean(priorAC);
+    }
+    const canViewHidden = isCurrentAC || hasPriorAC;
+
+    // Mask dữ liệu Input, Output của các test ẩn nếu chưa đạt AC
+    const clientTestResults = testResults.map((tc) => {
+      if (tc.isSample || canViewHidden) {
+        return {
+          ...tc,
+          isLocked: false,
+        };
+      }
+      return {
+        ...tc,
+        input: null,
+        expectedOutput: null,
+        stdout: null,
+        isLocked: true,
+      };
+    });
+
     return NextResponse.json({
       success: true,
+      canViewHiddenTests: canViewHidden,
       submission: {
         ...updatedSubmission,
-        testResults,
+        testResults: clientTestResults,
       },
     });
   } catch (error: any) {

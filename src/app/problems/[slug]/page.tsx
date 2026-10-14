@@ -36,6 +36,8 @@ import {
   UploadCloud,
   X,
   FileUp,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 import CodeEditor from '@/components/CodeEditor';
@@ -99,6 +101,19 @@ export default function ProblemDetailPage() {
     return [];
   }, [submissionResult]);
 
+  // Kiểm tra xem thí sinh này đã giải được bài tập này (đạt AC) hay chưa
+  const hasUserAC = useMemo(() => {
+    if ((problem as any)?.canViewHiddenTests || (problem as any)?.hasAC) return true;
+    if (submissionResult?.verdict === 'AC') return true;
+    if (
+      problemSubmissions &&
+      problemSubmissions.some((s) => s.username === username && s.verdict === 'AC')
+    ) {
+      return true;
+    }
+    return false;
+  }, [problem, submissionResult, problemSubmissions, username]);
+
   // Load username & subscribe to changes
   useEffect(() => {
     setMounted(true);
@@ -129,7 +144,13 @@ export default function ProblemDetailPage() {
         setLoading(true);
       }
       setError(null);
-      const res = await fetch(`/api/problems/${slug}${includeAll ? '?includeAll=true' : ''}`, {
+      const curUser = getStoredUsername() || username;
+      const qParams = new URLSearchParams();
+      if (curUser) qParams.set('username', curUser);
+      if (includeAll) qParams.set('includeAll', 'true');
+      const qStr = qParams.toString() ? `?${qParams.toString()}` : '';
+
+      const res = await fetch(`/api/problems/${slug}${qStr}`, {
         cache: 'no-store',
       });
       if (!res.ok) {
@@ -137,7 +158,7 @@ export default function ProblemDetailPage() {
       }
       const data = await res.json();
       setProblem(data);
-      if (includeAll) {
+      if (includeAll && data.canViewHiddenTests) {
         setShowingAllTests(true);
       }
     } catch (err: any) {
@@ -493,14 +514,27 @@ export default function ProblemDetailPage() {
 
                       {/* Nút mở khóa xem toàn bộ Test Ẩn nếu chưa mở */}
                       {!showingAllTests && problem._count?.testcases && problem._count.testcases > problem.testcases.length && (
-                        <button
-                          type="button"
-                          onClick={() => fetchProblem(true)}
-                          disabled={loadingAllTests}
-                          className="text-[11px] font-mono text-purple-300 hover:text-purple-200 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 transition-all"
-                        >
-                          <span>🔓 Xem tất cả {problem._count.testcases} tests (Mở khóa Test Ẩn)</span>
-                        </button>
+                        hasUserAC ? (
+                          <button
+                            type="button"
+                            onClick={() => fetchProblem(true)}
+                            disabled={loadingAllTests}
+                            className="text-[11px] font-mono text-emerald-300 hover:text-emerald-200 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+                          >
+                            <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>🔓 Mở khóa xem tất cả {problem._count.testcases} tests (Đã đạt AC)</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => alert('🔒 Bạn cần giải được bài tập này (đạt AC 100% điểm) để mở khóa xem toàn bộ Test Ẩn!')}
+                            className="text-[11px] font-mono text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded-lg flex items-center space-x-1.5 transition-all cursor-pointer"
+                            title="Yêu cầu đạt AC để mở khóa xem toàn bộ test ẩn"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>🔒 {problem._count.testcases - problem.testcases.length} Test Ẩn (Cần đạt AC để xem)</span>
+                          </button>
+                        )
                       )}
                     </div>
 
@@ -526,10 +560,10 @@ export default function ProblemDetailPage() {
                               className={`text-[9px] px-2 py-0.2 rounded font-semibold ${
                                 tc.isSample
                                   ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                  : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                               }`}
                             >
-                              {tc.isSample ? 'Test Mẫu (Ví dụ)' : '🔓 Test Ẩn (Hidden Test)'}
+                              {tc.isSample ? 'Test Mẫu (Ví dụ)' : '🔓 Test Ẩn (Đã mở khóa AC)'}
                             </span>
                           </div>
                           <button
@@ -1179,9 +1213,17 @@ export default function ProblemDetailPage() {
                               <span className="text-xs font-bold text-white">
                                 Toàn bộ {consoleTestResults.length} Testcases:
                               </span>
-                              <span className="text-[10px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.2 rounded-full font-mono font-medium">
-                                🔓 Đã mở khóa Test Ẩn
-                              </span>
+                              {hasUserAC ? (
+                                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.2 rounded-full font-mono font-medium flex items-center space-x-1">
+                                  <Unlock className="w-3 h-3" />
+                                  <span>Đã mở khóa Test Ẩn (Đạt AC)</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.2 rounded-full font-mono font-medium flex items-center space-x-1" title="Cần đạt AC để xem input/output test ẩn">
+                                  <Lock className="w-3 h-3" />
+                                  <span>Test Ẩn đã khóa (Cần AC)</span>
+                                </span>
+                              )}
                             </div>
                             <span className="text-[11px] text-slate-400">
                               Chọn testcase để soi chi tiết:
@@ -1193,6 +1235,8 @@ export default function ProblemDetailPage() {
                             {consoleTestResults.map((tr, idx) => {
                               const isTestAC = tr.verdict === 'AC';
                               const isSelected = activeTestIdx === idx;
+                              const isTestUnlocked = tr.isSample || hasUserAC || (tr as any).isLocked === false;
+
                               return (
                                 <button
                                   key={idx}
@@ -1211,10 +1255,12 @@ export default function ProblemDetailPage() {
                                     className={`text-[9px] px-1 py-0.2 rounded font-semibold ${
                                       tr.isSample
                                         ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                        : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                        : isTestUnlocked
+                                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                     }`}
                                   >
-                                    {tr.isSample ? 'Mẫu' : 'Ẩn'}
+                                    {tr.isSample ? 'Mẫu' : isTestUnlocked ? '🔓 Ẩn' : '🔒 Ẩn'}
                                   </span>
                                   <span
                                     className={`text-[10px] font-bold ${
@@ -1235,6 +1281,7 @@ export default function ProblemDetailPage() {
                               consoleTestResults[0];
                             if (!curTest) return null;
                             const isCurAC = curTest.verdict === 'AC';
+                            const isCurTestUnlocked = Boolean(curTest.isSample || hasUserAC || (curTest as any).isLocked === false);
                             const vCfg =
                               VERDICT_CONFIG[curTest.verdict as Verdict] || VERDICT_CONFIG.WA;
 
@@ -1250,10 +1297,12 @@ export default function ProblemDetailPage() {
                                       className={`px-1.5 py-0.2 rounded text-[10px] font-semibold flex items-center space-x-1 ${
                                         curTest.isSample
                                           ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                          : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                          : isCurTestUnlocked
+                                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                       }`}
                                     >
-                                      {curTest.isSample ? 'Test Mẫu' : '🔓 Test Ẩn'}
+                                      {curTest.isSample ? 'Test Mẫu' : isCurTestUnlocked ? '🔓 Test Ẩn (Đã mở)' : '🔒 Test Ẩn (Đang khóa)'}
                                     </span>
                                     <span
                                       className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${vCfg.badge}`}
@@ -1280,86 +1329,114 @@ export default function ProblemDetailPage() {
                                   </div>
                                 </div>
 
-                                {/* Test Data Inspection Grid: 3 cột song song trên desktop không cần scroll */}
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                                  {/* Cột 1: Input */}
-                                  <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
-                                        Dữ liệu vào (Input):
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(curTest.input || '', 9999)}
-                                        className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                        <span>Chép</span>
-                                      </button>
+                                {/* Nếu đã mở khóa: Hiển thị 3 cột Input | Expected | Your Output */}
+                                {isCurTestUnlocked ? (
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                                    {/* Cột 1: Input */}
+                                    <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
+                                          Dữ liệu vào (Input):
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => copyToClipboard(curTest.input || '', 9999)}
+                                          className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-mono"
+                                        >
+                                          <Copy className="w-3 h-3" />
+                                          <span>Chép</span>
+                                        </button>
+                                      </div>
+                                      <pre className="font-mono text-xs text-slate-200 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
+                                        {curTest.input !== undefined && curTest.input !== ''
+                                          ? curTest.input
+                                          : '(Không có input)'}
+                                      </pre>
                                     </div>
-                                    <pre className="font-mono text-xs text-slate-200 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
-                                      {curTest.input !== undefined && curTest.input !== ''
-                                        ? curTest.input
-                                        : '(Không có input)'}
-                                    </pre>
-                                  </div>
 
-                                  {/* Cột 2: Expected Output */}
-                                  <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold">
-                                        Đáp án chuẩn (Expected):
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          copyToClipboard(curTest.expectedOutput || '', 9998)
-                                        }
-                                        className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-mono"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                        <span>Chép</span>
-                                      </button>
+                                    {/* Cột 2: Expected Output */}
+                                    <div className="bg-[#0b0e14] border border-slate-800/80 rounded-lg p-2.5 flex flex-col">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-mono uppercase text-emerald-400 font-semibold">
+                                          Đáp án chuẩn (Expected):
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            copyToClipboard(curTest.expectedOutput || '', 9998)
+                                          }
+                                          className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center space-x-1 font-mono"
+                                        >
+                                          <Copy className="w-3 h-3" />
+                                          <span>Chép</span>
+                                        </button>
+                                      </div>
+                                      <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
+                                        {curTest.expectedOutput !== undefined &&
+                                        curTest.expectedOutput !== ''
+                                          ? curTest.expectedOutput
+                                          : '(Không có expected)'}
+                                      </pre>
                                     </div>
-                                    <pre className="font-mono text-xs text-emerald-300 whitespace-pre-wrap break-all max-h-36 overflow-y-auto">
-                                      {curTest.expectedOutput !== undefined &&
-                                      curTest.expectedOutput !== ''
-                                        ? curTest.expectedOutput
-                                        : '(Không có expected)'}
-                                    </pre>
-                                  </div>
 
-                                  {/* Cột 3: Your Output / Stdout */}
-                                  <div
-                                    className={`bg-[#0b0e14] border rounded-lg p-2.5 flex flex-col ${
-                                      isCurAC
-                                        ? 'border-slate-800/80'
-                                        : 'border-rose-500/40 bg-rose-500/5'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
-                                        Code của bạn (Your Output):
-                                      </span>
-                                      <span
-                                        className={`text-[10px] font-mono font-bold ${
-                                          isCurAC ? 'text-emerald-400' : 'text-rose-400'
-                                        }`}
-                                      >
-                                        {isCurAC ? 'Khớp đáp án ✓' : 'Sai khác ✗'}
-                                      </span>
-                                    </div>
-                                    <pre
-                                      className={`font-mono text-xs whitespace-pre-wrap break-all max-h-36 overflow-y-auto ${
-                                        isCurAC ? 'text-emerald-300' : 'text-rose-300'
+                                    {/* Cột 3: Your Output / Stdout */}
+                                    <div
+                                      className={`bg-[#0b0e14] border rounded-lg p-2.5 flex flex-col ${
+                                        isCurAC
+                                          ? 'border-slate-800/80'
+                                          : 'border-rose-500/40 bg-rose-500/5'
                                       }`}
                                     >
-                                      {curTest.stdout !== undefined && curTest.stdout !== ''
-                                        ? curTest.stdout
-                                        : '(Không có stdout output)'}
-                                    </pre>
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-mono uppercase text-slate-400 font-semibold">
+                                          Code của bạn (Your Output):
+                                        </span>
+                                        <span
+                                          className={`text-[10px] font-mono font-bold ${
+                                            isCurAC ? 'text-emerald-400' : 'text-rose-400'
+                                          }`}
+                                        >
+                                          {isCurAC ? 'Khớp đáp án ✓' : 'Sai khác ✗'}
+                                        </span>
+                                      </div>
+                                      <pre
+                                        className={`font-mono text-xs whitespace-pre-wrap break-all max-h-36 overflow-y-auto ${
+                                          isCurAC ? 'text-emerald-300' : 'text-rose-300'
+                                        }`}
+                                      >
+                                        {curTest.stdout !== undefined && curTest.stdout !== ''
+                                          ? curTest.stdout
+                                          : '(Không có stdout output)'}
+                                      </pre>
+                                    </div>
                                   </div>
-                                </div>
+                                ) : (
+                                  /* Khóa Test Ẩn nếu chưa đạt AC */
+                                  <div className="bg-[#0b0e14] border border-amber-500/30 rounded-xl p-4 flex flex-col items-center justify-center text-center space-y-2.5">
+                                    <div className="w-9 h-9 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                                      <Lock className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h4 className="text-xs font-bold text-white flex items-center justify-center space-x-1.5">
+                                        <span>Dữ liệu Test #{curTest.testIndex} (Test Ẩn) đã bị khóa</span>
+                                      </h4>
+                                      <p className="text-[11px] text-slate-400 max-w-md mt-1 leading-relaxed">
+                                        Để rèn luyện tư duy thuật toán và tính công bằng, bạn cần nộp bài đạt <strong className="text-emerald-400">Accepted (AC 100%)</strong> để mở khóa xem Dữ liệu vào (Input) và Đáp án (Output) của test ẩn này.
+                                      </p>
+                                    </div>
+                                    <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 max-w-lg w-full text-left text-[11px] text-slate-300 space-y-1 font-sans">
+                                      <div className="text-amber-400 font-semibold flex items-center space-x-1.5">
+                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Gợi ý gỡ lỗi (Debugging Tips):</span>
+                                      </div>
+                                      <p className="text-slate-400 text-[10px] leading-relaxed">
+                                        • Thử các trường hợp biên đặc biệt: $N = 1$, số âm, mảng rỗng, giá trị lớn nhất $A_i$.<br />
+                                        • Kiểm tra tràn số nguyên (dùng <code>long long</code> trong C++ khi giá trị vượt quá $2 \times 10^9$).<br />
+                                        • Kiểm tra điều kiện dừng đệ quy, phép chia cho 0, hoặc truy cập mảng ngoài biên.
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Error / Stderr if any */}
                                 {curTest.error && (

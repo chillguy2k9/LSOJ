@@ -47,8 +47,38 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       }
     }
 
+    // Kiểm tra xem bài nộp này có phải AC, hoặc thí sinh này đã từng đạt AC bài này chưa
+    const isAC = submission.verdict === 'AC';
+    let hasAC = false;
+    if (!isAC && submission.username) {
+      const prior = await prisma.submission.findFirst({
+        where: {
+          problemId: submission.problemId,
+          username: submission.username,
+          verdict: 'AC',
+        },
+        select: { id: true },
+      });
+      hasAC = Boolean(prior);
+    }
+    const canViewHidden = isAC || hasAC;
+
+    if (!canViewHidden && Array.isArray(testResults)) {
+      testResults = testResults.map((tr: any) => {
+        if (tr.isSample) return { ...tr, isLocked: false };
+        return {
+          ...tr,
+          input: null,
+          expectedOutput: null,
+          stdout: null,
+          isLocked: true,
+        };
+      });
+    }
+
     return NextResponse.json({
       ...submission,
+      canViewHiddenTests: canViewHidden,
       testResults,
     });
   } catch (error: any) {
