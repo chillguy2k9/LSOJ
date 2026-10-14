@@ -608,9 +608,9 @@ export default function ProblemDetailPage() {
                         </div>
 
                         {tc.explanation && (
-                          <div className="p-2.5 bg-[#0e141f] border-t border-slate-800/60 text-[11px] text-slate-400">
-                            <span className="font-semibold text-slate-300">Giải thích: </span>
-                            <MarkdownRenderer content={tc.explanation} className="inline-block" />
+                          <div className="p-2.5 bg-[#0e141f] border-t border-slate-800/60 text-[11px] text-slate-400 space-y-1">
+                            <span className="font-semibold text-slate-300 block">Giải thích: </span>
+                            <MarkdownRenderer content={tc.explanation} compact />
                           </div>
                         )}
                       </div>
@@ -1424,16 +1424,16 @@ export default function ProblemDetailPage() {
                                         Để rèn luyện tư duy thuật toán và tính công bằng, bạn cần nộp bài đạt <strong className="text-emerald-400">Accepted (AC 100%)</strong> để mở khóa xem Dữ liệu vào (Input) và Đáp án (Output) của test ẩn này.
                                       </p>
                                     </div>
-                                    <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 max-w-lg w-full text-left text-[11px] text-slate-300 space-y-1 font-sans">
+                                    <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 max-w-lg w-full text-left text-[11px] text-slate-300 space-y-1.5 font-sans">
                                       <div className="text-amber-400 font-semibold flex items-center space-x-1.5">
                                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                                         <span>Gợi ý gỡ lỗi (Debugging Tips):</span>
                                       </div>
-                                      <p className="text-slate-400 text-[10px] leading-relaxed">
-                                        • Thử các trường hợp biên đặc biệt: $N = 1$, số âm, mảng rỗng, giá trị lớn nhất $A_i$.<br />
-                                        • Kiểm tra tràn số nguyên (dùng <code>long long</code> trong C++ khi giá trị vượt quá $2 \times 10^9$).<br />
-                                        • Kiểm tra điều kiện dừng đệ quy, phép chia cho 0, hoặc truy cập mảng ngoài biên.
-                                      </p>
+                                      <MarkdownRenderer
+                                        content={`- Thử các trường hợp biên đặc biệt: $N = 1$, số âm, mảng rỗng, giá trị lớn nhất $A_i$.\n- Kiểm tra tràn số nguyên (dùng \`long long\` trong C++ khi giá trị vượt quá $2 \\times 10^9$).\n- Kiểm tra điều kiện dừng đệ quy, phép chia cho 0, hoặc truy cập mảng ngoài biên.`}
+                                        compact
+                                        className="text-slate-400 text-[10px] leading-relaxed"
+                                      />
                                     </div>
                                   </div>
                                 )}
@@ -1452,9 +1452,9 @@ export default function ProblemDetailPage() {
 
                                 {/* Explanation if any */}
                                 {curTest.explanation && (
-                                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-slate-300 text-xs">
-                                    <span className="font-semibold text-blue-400">Giải thích: </span>
-                                    <MarkdownRenderer content={curTest.explanation} className="inline-block" />
+                                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-slate-300 text-xs space-y-1">
+                                    <span className="font-semibold text-blue-400 block">Giải thích: </span>
+                                    <MarkdownRenderer content={curTest.explanation} compact />
                                   </div>
                                 )}
                               </div>

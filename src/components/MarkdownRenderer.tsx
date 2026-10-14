@@ -9,9 +9,10 @@ import { ZoomIn, X, Download } from 'lucide-react';
 interface MarkdownRendererProps {
   content: string;
   className?: string;
+  compact?: boolean;
 }
 
-export default function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, className = '', compact = false }: MarkdownRendererProps) {
   // Modal phóng to ảnh
   const [zoomedImage, setZoomedImage] = useState<{ src: string; alt?: string } | null>(null);
 
@@ -35,7 +36,7 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
 
   return (
     <>
-      <div className={`prose prose-invert max-w-none text-slate-300 ${className}`}>
+      <div className={compact ? `text-slate-300 ${className}` : `prose prose-invert max-w-none text-slate-300 ${className}`}>
         <ReactMarkdown
           remarkPlugins={[remarkMath]}
           rehypePlugins={[rehypeKatex]}
@@ -50,16 +51,16 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
               <h3 className="text-base font-semibold text-blue-400 mt-4 mb-1" {...props} />
             ),
             p: ({ node, ...props }) => (
-              <p className="text-slate-300 leading-relaxed mb-3 text-sm" {...props} />
+              <p className={compact ? 'text-inherit leading-relaxed mb-1.5 last:mb-0' : 'text-slate-300 leading-relaxed mb-3 text-sm'} {...props} />
             ),
             ul: ({ node, ...props }) => (
-              <ul className="list-disc pl-5 mb-3 text-sm space-y-1 text-slate-300" {...props} />
+              <ul className={compact ? 'list-disc pl-4 mb-1.5 last:mb-0 space-y-0.5 text-inherit' : 'list-disc pl-5 mb-3 text-sm space-y-1 text-slate-300'} {...props} />
             ),
             ol: ({ node, ...props }) => (
-              <ol className="list-decimal pl-5 mb-3 text-sm space-y-1 text-slate-300" {...props} />
+              <ol className={compact ? 'list-decimal pl-4 mb-1.5 last:mb-0 space-y-0.5 text-inherit' : 'list-decimal pl-5 mb-3 text-sm space-y-1 text-slate-300'} {...props} />
             ),
             li: ({ node, ...props }) => (
-              <li className="leading-relaxed" {...props} />
+              <li className="leading-relaxed text-inherit" {...props} />
             ),
             // Custom renderer cho thẻ img: Hiển thị xếp dọc xuống, bo góc sang trọng, click để phóng to
             img: ({ node, src, alt, ...props }: any) => {
@@ -93,18 +94,22 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
                 </div>
               );
             },
-            code: ({ inline, className, children, ...props }: any) => {
-              if (inline) {
+            pre: ({ node, ...props }: any) => (
+              <pre className="bg-[#0f141c] p-3 rounded-lg border border-slate-800 text-slate-200 text-xs font-mono my-2 overflow-x-auto" {...props} />
+            ),
+            code: ({ node, className, children, ...props }: any) => {
+              const isBlock = Boolean(className?.includes('language-') || (typeof children === 'string' && children.includes('\n')));
+              if (!isBlock) {
                 return (
-                  <code className="bg-slate-800/80 text-amber-300 px-1.5 py-0.5 rounded text-xs font-mono border border-slate-700/50" {...props}>
+                  <code className="bg-slate-800/80 text-amber-300 px-1.5 py-0.5 rounded text-[11px] font-mono border border-slate-700/50" {...props}>
                     {children}
                   </code>
                 );
               }
               return (
-                <pre className="bg-[#0f141c] p-3 rounded-lg border border-slate-800 text-slate-200 text-xs font-mono my-2 overflow-x-auto">
-                  <code>{children}</code>
-                </pre>
+                <code className={`text-slate-200 font-mono text-xs ${className || ''}`} {...props}>
+                  {children}
+                </code>
               );
             },
             blockquote: ({ node, ...props }) => (
