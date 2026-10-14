@@ -26,7 +26,7 @@ export function getPistonHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  const key = process.env.PISTON_API_KEY || 'nam_lsoj_sec_999f8a2b71c4';
+  const key = process.env.PISTON_API_KEY || 'vinh_lsoj_sec_999f8a2b71c4';
   if (key) {
     headers['X-Piston-Key'] = key;
   }
